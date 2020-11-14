@@ -1,0 +1,7 @@
+twitch:
+  auth:
+    client-id:
+    client-secret:
+  broadcaster-id:
+  batch-count: 5
+
