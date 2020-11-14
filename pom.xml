@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.floxd.twitch.clips</groupId>
     <artifactId>downloader</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.1</version>
     <name>downloader</name>
     <description>Downloading Twitch Clips</description>
 
