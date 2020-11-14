@@ -24,3 +24,7 @@ You know when the download is done once no more log messages are being printed o
 
 * install java 11 or above and maven 3.6
 * run `mvn clean install`
+
+# credits
+
+credits to https://github.com/Ravenbtw for giving me the idea
