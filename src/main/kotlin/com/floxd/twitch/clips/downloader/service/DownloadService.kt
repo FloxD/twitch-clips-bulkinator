@@ -1,15 +1,13 @@
-package com.floxd.twitch.clips.downloader
+package com.floxd.twitch.clips.downloader.service
 
-import com.floxd.twitch.clips.downloader.model.AuthResponse
 import com.floxd.twitch.clips.downloader.model.ClipResponse
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.CommandLineRunner
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
-import org.springframework.stereotype.Component
+import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
 import java.io.File
 import java.io.InputStream
@@ -22,26 +20,21 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
 
-@Component
-class Runner(@Value("\${twitch.auth.client-id}") val clientId: String?,
-             @Value("\${twitch.auth.client-secret}") val clientSecret: String?,
-             @Value("\${twitch.broadcaster-id}") val broadcasterId: Long?,
-             @Value("\${twitch.batch-count:5}") val batchCount: Int) : CommandLineRunner {
+@Service
+class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
+                      @Value("\${twitch.broadcaster-id}") val broadcasterId: Long?,
+                      @Value("\${twitch.batch-count:5}") val batchCount: Int) {
 
-    val logger: Logger = LoggerFactory.getLogger(Runner::class.java)
-    val restTemplate: RestTemplate = RestTemplate()
-
-    override fun run(vararg args: String?) {
-
+    init {
         if (broadcasterId == null) {
             throw IllegalArgumentException("The broadcaster-id is not set! Make sure that you set it through the argument -Dtwitch.broadcaster-id=INSERT_BROADCASTER_ID_HERE")
         }
+    }
 
-        val authResponse = restTemplate.postForObject(getTokenUrl(), null, AuthResponse::class.java)
+    val logger: Logger = LoggerFactory.getLogger(DownloadService::class.java)
+    val restTemplate: RestTemplate = RestTemplate()
 
-        if (authResponse?.access_token == null) {
-            throw RuntimeException("access token is null")
-        }
+    fun download(accessToken: String) {
 
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
         val folderName = LocalDateTime.now().format(formatter)
@@ -49,8 +42,8 @@ class Runner(@Value("\${twitch.auth.client-id}") val clientId: String?,
 
         var cursor: String? = null
 
-        for (i in 0..batchCount) {
-            cursor = downloadBatch(authResponse.access_token, cursor, folderName)
+        for (i in 1..batchCount) {
+            cursor = downloadBatch(accessToken, cursor, folderName)
         }
 
         logger.info("finished")
@@ -109,14 +102,6 @@ class Runner(@Value("\${twitch.auth.client-id}") val clientId: String?,
 
     private fun sanitizeTitle(title: String?): String {
         return title?.replace("[^a-zA-Z0-9\\s]".toRegex(), "_") ?: UUID.randomUUID().toString()
-    }
-
-    private fun getTokenUrl(): String {
-        return "https://id.twitch.tv/oauth2/token" +
-                "?client_id=$clientId" +
-                "&client_secret=$clientSecret" +
-                "&grant_type=client_credentials" +
-                "&scope="
     }
 
     private fun getClipsApiUrl(cursor: String?): String {
