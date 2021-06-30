@@ -1,9 +1,9 @@
 package com.floxd.twitch.clips.downloader.service
 
-import com.floxd.twitch.clips.downloader.model.ClipResponse
+import com.floxd.twitch.clips.downloader.model.GQLClipResponse
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.CommandLineRunner
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -18,69 +18,60 @@ import java.time.format.DateTimeFormatter
 import java.util.*
 
 @Service
-class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
-                      @Value("\${twitch.broadcaster-id}") val broadcasterId: Long?,
-                      @Value("\${twitch.batch-count:5}") val batchCount: Int) {
-
-    init {
-        if (broadcasterId == null) {
-            throw IllegalArgumentException("The broadcaster-id is not set! Make sure that you set it through the argument -Dtwitch.broadcaster-id=INSERT_BROADCASTER_ID_HERE")
-        }
-    }
+class DownloadService : CommandLineRunner {
 
     val logger: Logger = LoggerFactory.getLogger(DownloadService::class.java)
     val restTemplate: RestTemplate = RestTemplate()
 
-    fun download(accessToken: String) {
+    override fun run(vararg args: String?) {
+        download()
+    }
+
+    fun download() {
 
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
         val folderName = LocalDateTime.now().format(formatter)
         Files.createDirectories(Paths.get(folderName))
 
-        var cursor: String? = null
-
-        for (i in 1..batchCount) {
-            cursor = downloadBatch(accessToken, cursor, folderName)
-        }
+        downloadSingle(folderName)
 
         logger.info("finished")
     }
 
-    private fun downloadBatch(accessToken: String, cursor: String?, folderName: String): String {
-        logger.info("start batch")
-
-        val url = getClipsApiUrl(cursor)
+    fun downloadSingle(folderName: String) {
+        val url = "https://gql.twitch.tv/gql"
         logger.info("fetch clips from api. $url")
-        val headers = HttpHeaders()
-        headers.set("Authorization", "Bearer $accessToken")
-        headers.set("Client-Id", clientId)
-        val httpEntity = HttpEntity(null, headers)
 
-        val clipResponse = restTemplate.exchange(
-            url,
-            HttpMethod.GET,
-            httpEntity,
-            ClipResponse::class.java
+        val httpHeaders = HttpHeaders()
+        httpHeaders.set("Client-Id", "kimne78kx3ncx6brgo4mv6wki5h1ko")
+
+        val httpEntity = HttpEntity(
+            """[{"operationName":"ClipsCards__User","variables":{"login":"elina","limit":60,"criteria":{"filter":"LAST_MONTH"}},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"b73ad2bfaecfd30a9e6c28fada15bd97032c83ec77a0440766a56fe0bd632777"}}}]""",
+            httpHeaders
         )
 
-        logger.info("clips fetched api. found ${clipResponse.body?.data?.size} clips")
+        val response = restTemplate.exchange(
+            "https://gql.twitch.tv/gql",
+            HttpMethod.POST,
+            httpEntity,
+            arrayOf<GQLClipResponse>()::class.java
+        )
 
-        clipResponse.body?.data?.forEach { clipData ->
-            val thumbnailUrl: String? = clipData.get("thumbnail_url")
+        logger.info("clips fetched api. found ${response.body?.get(0)?.data?.user?.clips?.edges?.size} clips")
+
+        response.body?.get(0)?.data?.user?.clips?.edges?.forEach { clip ->
+
+            val thumbnailUrl: String? = clip?.node?.thumbnailURL
             thumbnailUrl?.let {
                 val videoUrl = getVideoUrl(thumbnailUrl)
 
                 val inputStream: InputStream = URL(videoUrl).openStream()
-                val title: String? = clipData.get("title")
+                val title: String? = clip.node.title
                 val path = getPath(folderName, title)
                 logger.info("downloading clip with title: $title. $videoUrl")
                 Files.copy(inputStream, path, StandardCopyOption.REPLACE_EXISTING)
             }
         }
-
-        logger.info("finished batch")
-
-        return clipResponse.body?.pagination?.get("cursor") ?: throw RuntimeException("cursor couldn't be fetched")
     }
 
     private fun getPath(folderName: String, title: String?): Path {
@@ -106,16 +97,7 @@ class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
         return title?.replace("[^a-zA-Z0-9\\s]".toRegex(), "_") ?: UUID.randomUUID().toString()
     }
 
-    private fun getClipsApiUrl(cursor: String?): String {
-        val baseUrl = "https://api.twitch.tv/helix/clips?broadcaster_id=$broadcasterId&first=20"
-        if (cursor == null) {
-            return baseUrl
-        } else {
-            return "$baseUrl&after=$cursor"
-        }
-    }
-
     private fun getVideoUrl(thumbnailUrl: String): String {
-        return thumbnailUrl.replace("-preview-480x272.jpg", ".mp4")
+        return thumbnailUrl.replace("-preview-260x147.jpg", ".mp4")
     }
 }
