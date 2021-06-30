@@ -12,10 +12,7 @@ import org.springframework.web.client.RestTemplate
 import java.io.File
 import java.io.InputStream
 import java.net.URL
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
+import java.nio.file.*
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -60,10 +57,11 @@ class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
         val httpEntity = HttpEntity(null, headers)
 
         val clipResponse = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                httpEntity,
-                ClipResponse::class.java)
+            url,
+            HttpMethod.GET,
+            httpEntity,
+            ClipResponse::class.java
+        )
 
         logger.info("clips fetched api. found ${clipResponse.body?.data?.size} clips")
 
@@ -75,7 +73,7 @@ class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
                 val inputStream: InputStream = URL(videoUrl).openStream()
                 val title: String? = clipData.get("title")
                 val path = getPath(folderName, title)
-                logger.info("downloading clip with title: $title")
+                logger.info("downloading clip with title: $title. $videoUrl")
                 Files.copy(inputStream, path, StandardCopyOption.REPLACE_EXISTING)
             }
         }
@@ -87,7 +85,11 @@ class DownloadService(@Value("\${twitch.auth.client-id}") val clientId: String?,
 
     private fun getPath(folderName: String, title: String?): Path {
         val sanitizedTitle = sanitizeTitle(title)
-        val path = Paths.get("$folderName${File.separator}$sanitizedTitle.mp4")
+        val path = try {
+            Paths.get("$folderName${File.separator}$sanitizedTitle.mp4")
+        } catch (e: InvalidPathException) {
+            Paths.get("$folderName${File.separator}${UUID.randomUUID()}.mp4")
+        }
 
         if (Files.exists(path)) {
             val randomFilename = Paths.get("$folderName${File.separator}$sanitizedTitle ${UUID.randomUUID()}.mp4")
